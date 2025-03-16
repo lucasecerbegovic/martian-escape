@@ -25,6 +25,7 @@ let playAgainButton = {
   width: 0,
   height: 0
 };
+let gameState = 'splash'; // 'splash', 'playing', 'gameOver'
 
 // Obstacle class for falling asteroids
 class Obstacle {
@@ -204,12 +205,19 @@ function setup() {
   isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   // Create a responsive canvas
+  let canvas;
   if (isMobile) {
     // Use full width on mobile, maintain aspect ratio
     canvasScaleFactor = windowWidth / 600;
-    createCanvas(windowWidth, windowWidth * (400/600));
+    canvas = createCanvas(windowWidth, windowWidth * (400/600));
   } else {
-    createCanvas(600, 400);
+    canvas = createCanvas(600, 400);
+  }
+  
+  // Attach the canvas to a container div if it exists
+  let container = document.getElementById('game-container');
+  if (container) {
+    canvas.parent('game-container');
   }
   
   // Initialize game variables
@@ -273,28 +281,34 @@ function windowResized() {
 
 // Add these touch event handlers
 function touchStarted() {
-  if (!isMobile) return;
+  if (!isMobile) return false;
   
-  if (gameOver) {
+  if (gameState === 'splash') {
+    // Start the game when touching splash screen
+    gameState = 'playing';
+    resetGame();
+    return false;
+  } else if (gameState === 'gameOver') {
     // Check if Play Again button was touched
-    if (touchX >= playAgainButton.x && touchX <= playAgainButton.x + playAgainButton.width &&
-        touchY >= playAgainButton.y && touchY <= playAgainButton.y + playAgainButton.height) {
+    if (touches[0].x >= playAgainButton.x && touches[0].x <= playAgainButton.x + playAgainButton.width &&
+        touches[0].y >= playAgainButton.y && touches[0].y <= playAgainButton.y + playAgainButton.height) {
       resetGame();
-      return false;
+      gameState = 'playing';
     }
-  } else {
+    return false;
+  } else if (gameState === 'playing') {
     // Existing touch controls for gameplay
-    if (isPointInRect(touchX, touchY, leftButton.x, leftButton.y, leftButton.size, leftButton.size)) {
+    if (isPointInRect(touches[0].x, touches[0].y, leftButton.x, leftButton.y, leftButton.size, leftButton.size)) {
       leftButton.isPressed = true;
       moveLeft = true;
     }
     
-    if (isPointInRect(touchX, touchY, rightButton.x, rightButton.y, rightButton.size, rightButton.size)) {
+    if (isPointInRect(touches[0].x, touches[0].y, rightButton.x, rightButton.y, rightButton.size, rightButton.size)) {
       rightButton.isPressed = true;
       moveRight = true;
     }
     
-    if (isPointInRect(touchX, touchY, shootButton.x, shootButton.y, shootButton.size, shootButton.size)) {
+    if (isPointInRect(touches[0].x, touches[0].y, shootButton.x, shootButton.y, shootButton.size, shootButton.size)) {
       shootButton.isPressed = true;
       shoot();
     }
@@ -333,198 +347,327 @@ function isPointInRect(px, py, rx, ry, rw, rh) {
 
 // Draw function to handle game loop
 function draw() {
-  if (!gameOver) {
-    // Space background with stars
-    background(10, 10, 40); // Deep space blue
+  if (gameState === 'splash') {
+    drawSplashScreen();
+  } else if (gameState === 'playing') {
+    drawGameScreen();
+  } else if (gameState === 'gameOver') {
+    drawGameOverScreen();
+  }
+}
+
+// Add this new function for the splash screen
+function drawSplashScreen() {
+  // Space background with stars
+  background(10, 10, 40);
+  
+  // Draw stars
+  fill(255, 255, 255, 200);
+  noStroke();
+  for (let i = 0; i < 100; i++) {
+    let x = (i * 17) % width;
+    let y = (i * 23) % height;
+    let size = noise(i * 0.1, frameCount * 0.01) * 3;
+    ellipse(x, y, size);
+  }
+  
+  // Add some distant nebula effects
+  noFill();
+  for (let i = 0; i < 3; i++) {
+    let x = (width/3) * i + 100;
+    let y = height/2 + sin(frameCount * 0.01 + i) * 100;
+    let size = 150 + sin(frameCount * 0.005 + i) * 50;
     
-    // Draw stars
-    fill(255, 255, 255, 200);
+    for (let j = 0; j < 3; j++) {
+      let alpha = 50 - j * 15;
+      if (i === 0) stroke(100, 50, 255, alpha); // Purple nebula
+      if (i === 1) stroke(50, 200, 255, alpha); // Blue nebula
+      if (i === 2) stroke(255, 100, 50, alpha); // Orange nebula
+      ellipse(x, y, size + j * 20);
+    }
+  }
+  
+  // Draw a spaceship flying across the screen
+  let shipX = (frameCount % (width + 200)) - 100;
+  drawSpaceship(shipX, height/3, spaceshipWidth, spaceshipHeight);
+  
+  // Add engine particles for the flying ship
+  if (frameCount % 3 === 0) {
+    // Simple particle effect for the demo ship
+    fill(255, 100, 0, 150);
     noStroke();
-    for (let i = 0; i < 100; i++) {
-      let x = (i * 17) % width;
-      let y = (i * 23) % height;
-      let size = noise(i * 0.1, frameCount * 0.01) * 3;
-      ellipse(x, y, size);
-    }
+    let particleSize = random(5, 10);
+    ellipse(shipX + spaceshipWidth/2, height/3 + spaceshipHeight, particleSize);
+  }
+  
+  // Title with glow effect
+  push();
+  textAlign(CENTER);
+  
+  // Glow effect
+  fill(0, 100, 255, 50);
+  textSize(52);
+  text("SPACE ESCAPE", width/2, height/2 - 30);
+  
+  fill(100, 200, 255);
+  textSize(50);
+  text("SPACE ESCAPE", width/2, height/2 - 30);
+  
+  // Subtitle
+  fill(255);
+  textSize(20);
+  text("Navigate through asteroids and collect power-ups", width/2, height/2 + 20);
+  
+  // Animated "Press to Start" text
+  let pulseAmount = sin(frameCount * 0.05) * 0.2 + 0.8;
+  textSize(24 * pulseAmount);
+  fill(255, 255, 255, 200 + sin(frameCount * 0.05) * 55);
+  text("CLICK TO START", width/2, height/2 + 80);
+  
+  // Draw controls
+  textSize(16);
+  fill(200);
+  text("CONTROLS", width/2, height - 80);
+  text("← → : Move   SPACE : Shoot", width/2, height - 50);
+  
+  pop();
+  
+  // Draw asteroids in the background for visual interest
+  for (let i = 0; i < 5; i++) {
+    let x = (width/5) * i + sin(frameCount * 0.02 + i) * 30;
+    let y = height - 150 + cos(frameCount * 0.02 + i) * 20;
+    let size = 15 + i * 5;
     
-    // Add some distant nebula effects
-    noFill();
-    for (let i = 0; i < 3; i++) {
-      let x = (width/3) * i + 100;
-      let y = height/2 + sin(frameCount * 0.01 + i) * 100;
-      let size = 150 + sin(frameCount * 0.005 + i) * 50;
-      
-      for (let j = 0; j < 3; j++) {
-        let alpha = 50 - j * 15;
-        if (i === 0) stroke(100, 50, 255, alpha); // Purple nebula
-        if (i === 1) stroke(50, 200, 255, alpha); // Blue nebula
-        if (i === 2) stroke(255, 100, 50, alpha); // Orange nebula
-        ellipse(x, y, size + j * 20);
+    push();
+    translate(x, y);
+    rotate(frameCount * 0.01 + i);
+    fill(128);
+    beginShape();
+    for (let j = 0; j < 8; j++) {
+      let angle = TWO_PI * j / 8;
+      let r = size + random(-size/4, size/4);
+      let px = r * cos(angle);
+      let py = r * sin(angle);
+      vertex(px, py);
+    }
+    endShape(CLOSE);
+    pop();
+  }
+}
+
+// Create a function for the main game screen (copy your existing draw function content)
+function drawGameScreen() {
+  // Space background with stars
+  background(10, 10, 40); // Deep space blue
+  
+  // Draw stars
+  fill(255, 255, 255, 200);
+  noStroke();
+  for (let i = 0; i < 100; i++) {
+    let x = (i * 17) % width;
+    let y = (i * 23) % height;
+    let size = noise(i * 0.1, frameCount * 0.01) * 3;
+    ellipse(x, y, size);
+  }
+  
+  // Add some distant nebula effects
+  noFill();
+  for (let i = 0; i < 3; i++) {
+    let x = (width/3) * i + 100;
+    let y = height/2 + sin(frameCount * 0.01 + i) * 100;
+    let size = 150 + sin(frameCount * 0.005 + i) * 50;
+    
+    for (let j = 0; j < 3; j++) {
+      let alpha = 50 - j * 15;
+      if (i === 0) stroke(100, 50, 255, alpha); // Purple nebula
+      if (i === 1) stroke(50, 200, 255, alpha); // Blue nebula
+      if (i === 2) stroke(255, 100, 50, alpha); // Orange nebula
+      ellipse(x, y, size + j * 20);
+    }
+  }
+  
+  // Draw the spaceship
+  drawSpaceship(spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight);
+  
+  // Update spaceship position based on key inputs
+  if (moveLeft) {
+    spaceshipX -= 5; // Move left
+  }
+  if (moveRight) {
+    spaceshipX += 5; // Move right
+  }
+  spaceshipX = constrain(spaceshipX, 0, width - spaceshipWidth); // Keep within canvas
+  
+  // Generate new asteroids every 50 frames
+  if (frameCount % 50 === 0) {
+    let x = random(0, width);
+    let size = random(10, 30);
+    obstacles.push(new Obstacle(x, size));
+  }
+  
+  // Update and draw all asteroids
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    let obs = obstacles[i];
+    obs.update();
+    obs.draw();
+    if (obs.y > height) { // If asteroid falls off screen
+      obstacles.splice(i, 1); // Remove it
+      score++; // Increase score
+    }
+  }
+  
+  // Check for collisions between spaceship and asteroids
+  for (let obs of obstacles) {
+    if (circleRect(obs.x, obs.y, obs.size, spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight)) {
+      if (!shieldActive) {
+        gameState = 'gameOver'; // Change to gameOver state
       }
     }
+  }
+  
+  // Update and draw lasers
+  for (let i = lasers.length - 1; i >= 0; i--) {
+    lasers[i].update();
+    lasers[i].draw();
     
-    // Draw the spaceship
-    drawSpaceship(spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight);
-    
-    // Update spaceship position based on key inputs
-    if (moveLeft) {
-      spaceshipX -= 5; // Move left
-    }
-    if (moveRight) {
-      spaceshipX += 5; // Move right
-    }
-    spaceshipX = constrain(spaceshipX, 0, width - spaceshipWidth); // Keep within canvas
-    
-    // Generate new asteroids every 50 frames
-    if (frameCount % 50 === 0) {
-      let x = random(0, width);
-      let size = random(10, 30);
-      obstacles.push(new Obstacle(x, size));
+    // Remove lasers that go off screen
+    if (lasers[i].y < 0) {
+      lasers.splice(i, 1);
+      continue;
     }
     
-    // Update and draw all asteroids
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-      let obs = obstacles[i];
-      obs.update();
-      obs.draw();
-      if (obs.y > height) { // If asteroid falls off screen
-        obstacles.splice(i, 1); // Remove it
-        score++; // Increase score
-      }
-    }
-    
-    // Check for collisions between spaceship and asteroids
-    for (let obs of obstacles) {
-      if (circleRect(obs.x, obs.y, obs.size, spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight)) {
-        gameOver = true; // End game on collision
-      }
-    }
-    
-    // Update and draw lasers
-    for (let i = lasers.length - 1; i >= 0; i--) {
-      lasers[i].update();
-      lasers[i].draw();
-      
-      // Remove lasers that go off screen
-      if (lasers[i].y < 0) {
+    // Check for collision with asteroids
+    for (let j = obstacles.length - 1; j >= 0; j--) {
+      let obs = obstacles[j];
+      let hit = circleRect(obs.x, obs.y, obs.size/2, 
+                         lasers[i].x, lasers[i].y, 
+                         lasers[i].width, lasers[i].height);
+      if (hit) {
+        // Create explosion effect
+        createExplosion(obs.x, obs.y);
+        obstacles.splice(j, 1);
         lasers.splice(i, 1);
-        continue;
-      }
-      
-      // Check for collision with asteroids
-      for (let j = obstacles.length - 1; j >= 0; j--) {
-        let obs = obstacles[j];
-        let hit = circleRect(obs.x, obs.y, obs.size/2, 
-                           lasers[i].x, lasers[i].y, 
-                           lasers[i].width, lasers[i].height);
-        if (hit) {
-          // Create explosion effect
-          createExplosion(obs.x, obs.y);
-          obstacles.splice(j, 1);
-          lasers.splice(i, 1);
-          score += 5;
-          break;
-        }
+        score += 5;
+        break;
       }
     }
+  }
 
-    // Generate powerups
-    if (frameCount % 300 === 0) { // Every 5 seconds
-      let type = random(powerupTypes);
-      powerups.push(new Powerup(random(width - 20), type));
-    }
+  // Generate powerups
+  if (frameCount % 300 === 0) { // Every 5 seconds
+    let type = random(powerupTypes);
+    powerups.push(new Powerup(random(width - 20), type));
+  }
 
-    // Update and draw powerups
-    for (let i = powerups.length - 1; i >= 0; i--) {
-      let p = powerups[i];
-      p.update();
-      p.draw();
-      
-      // Check collision with spaceship
-      if (rectRect(p.x, p.y, p.size, p.size,
-                  spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight)) {
-        activatePowerup(p.type);
-        powerups.splice(i, 1);
-      }
-      
-      // Remove if off screen
-      if (p.y > height) {
-        powerups.splice(i, 1);
-      }
+  // Update and draw powerups
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    let p = powerups[i];
+    p.update();
+    p.draw();
+    
+    // Check collision with spaceship
+    if (rectRect(p.x, p.y, p.size, p.size,
+                spaceshipX, spaceshipY, spaceshipWidth, spaceshipHeight)) {
+      activatePowerup(p.type);
+      powerups.splice(i, 1);
     }
+    
+    // Remove if off screen
+    if (p.y > height) {
+      powerups.splice(i, 1);
+    }
+  }
 
-    // Draw shield if active
-    if (shieldActive) {
-      push();
-      noFill();
-      stroke(0, 255, 255, 150);
-      strokeWeight(2);
-      ellipse(spaceshipX + spaceshipWidth/2, spaceshipY + spaceshipHeight/2, 
-              spaceshipWidth * 1.5, spaceshipHeight * 1.5);
-      pop();
+  // Draw shield if active
+  if (shieldActive) {
+    push();
+    noFill();
+    stroke(0, 255, 255, 150);
+    strokeWeight(2);
+    ellipse(spaceshipX + spaceshipWidth/2, spaceshipY + spaceshipHeight/2, 
+            spaceshipWidth * 1.5, spaceshipHeight * 1.5);
+    pop();
+  }
+  
+  // Draw mobile controls if on mobile device
+  if (isMobile) {
+    drawMobileControls();
+  }
+  
+  // Display the score
+  fill(255); // White text
+  textSize(16);
+  textAlign(LEFT);
+  text("Score: " + score, 10, 20);
+}
+
+// Rename the game over section to its own function
+function drawGameOverScreen() {
+  // Game over state
+  background(0); // Black background
+  
+  // Continue drawing stars in background for visual interest
+  fill(255, 255, 255, 200);
+  noStroke();
+  for (let i = 0; i < 100; i++) {
+    let x = (i * 17) % width;
+    let y = (i * 23) % height;
+    let size = noise(i * 0.1, frameCount * 0.01) * 3;
+    ellipse(x, y, size);
+  }
+  
+  // Game over text
+  fill(255, 50, 50);
+  textSize(40);
+  textAlign(CENTER);
+  text("GAME OVER", width / 2, height / 3);
+  
+  fill(255);
+  textSize(24);
+  text("Final Score: " + score, width / 2, height / 2);
+  
+  // Draw Play Again button
+  playAgainButton.width = 200;
+  playAgainButton.height = 60;
+  playAgainButton.x = width/2 - playAgainButton.width/2;
+  playAgainButton.y = height * 0.65;
+  
+  // Button glow effect
+  for (let i = 3; i > 0; i--) {
+    noFill();
+    stroke(0, 150, 255, 50/i);
+    strokeWeight(i*2);
+    rect(playAgainButton.x - i*3, playAgainButton.y - i*3, 
+         playAgainButton.width + i*6, playAgainButton.height + i*6, 15);
+  }
+  
+  // Button background
+  fill(0, 100, 200);
+  stroke(0, 150, 255);
+  strokeWeight(3);
+  rect(playAgainButton.x, playAgainButton.y, 
+       playAgainButton.width, playAgainButton.height, 10);
+  
+  // Button text
+  fill(255);
+  noStroke();
+  textSize(24);
+  text("PLAY AGAIN", width/2, playAgainButton.y + playAgainButton.height/2 + 8);
+}
+
+// Update mousePressed to handle splash screen clicks
+function mousePressed() {
+  if (gameState === 'splash') {
+    // Start the game when clicking on splash screen
+    gameState = 'playing';
+    resetGame();
+  } else if (gameState === 'gameOver') {
+    // Check if Play Again button was clicked
+    if (mouseX >= playAgainButton.x && mouseX <= playAgainButton.x + playAgainButton.width &&
+        mouseY >= playAgainButton.y && mouseY <= playAgainButton.y + playAgainButton.height) {
+      resetGame();
+      gameState = 'playing';
     }
-    
-    // Draw mobile controls if on mobile device
-    if (isMobile) {
-      drawMobileControls();
-    }
-    
-    // Display the score
-    fill(255); // White text
-    textSize(16);
-    textAlign(LEFT);
-    text("Score: " + score, 10, 20);
-  } else {
-    // Game over state
-    background(0); // Black background
-    
-    // Continue drawing stars in background for visual interest
-    fill(255, 255, 255, 200);
-    noStroke();
-    for (let i = 0; i < 100; i++) {
-      let x = (i * 17) % width;
-      let y = (i * 23) % height;
-      let size = noise(i * 0.1, frameCount * 0.01) * 3;
-      ellipse(x, y, size);
-    }
-    
-    // Game over text
-    fill(255, 50, 50);
-    textSize(40);
-    textAlign(CENTER);
-    text("GAME OVER", width / 2, height / 3);
-    
-    fill(255);
-    textSize(24);
-    text("Final Score: " + score, width / 2, height / 2);
-    
-    // Draw Play Again button
-    playAgainButton.width = 200;
-    playAgainButton.height = 60;
-    playAgainButton.x = width/2 - playAgainButton.width/2;
-    playAgainButton.y = height * 0.65;
-    
-    // Button glow effect
-    for (let i = 3; i > 0; i--) {
-      noFill();
-      stroke(0, 150, 255, 50/i);
-      strokeWeight(i*2);
-      rect(playAgainButton.x - i*3, playAgainButton.y - i*3, 
-           playAgainButton.width + i*6, playAgainButton.height + i*6, 15);
-    }
-    
-    // Button background
-    fill(0, 100, 200);
-    stroke(0, 150, 255);
-    strokeWeight(3);
-    rect(playAgainButton.x, playAgainButton.y, 
-         playAgainButton.width, playAgainButton.height, 10);
-    
-    // Button text
-    fill(255);
-    noStroke();
-    textSize(24);
-    text("PLAY AGAIN", width/2, playAgainButton.y + playAgainButton.height/2 + 8);
   }
 }
 
@@ -722,17 +865,6 @@ function drawMobileControls() {
   );
   
   pop();
-}
-
-// Modify the mousePressed function to handle button clicks
-function mousePressed() {
-  if (gameOver) {
-    // Check if Play Again button was clicked
-    if (mouseX >= playAgainButton.x && mouseX <= playAgainButton.x + playAgainButton.width &&
-        mouseY >= playAgainButton.y && mouseY <= playAgainButton.y + playAgainButton.height) {
-      resetGame();
-    }
-  }
 }
 
 // Update resetGame to also reset the spaceship position
